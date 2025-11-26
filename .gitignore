@@ -1,0 +1,17 @@
+# R / RStudio session artifacts
+*.RData
+.Rhistory
+.Rapp.history
+.Rproj.user/
+*.Rproj
+
+
+# Bytecode / caches
+__pycache__/
+*.py[cod]
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
