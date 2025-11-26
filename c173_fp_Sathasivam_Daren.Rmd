@@ -1,0 +1,546 @@
+---
+title: "C173 Final Project"
+author: "Daren Sathasivam"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include = FALSE}
+# Datasets
+# Copy and paste each line below at the R command line to access the data:
+a1 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/wolfcamp.txt", header=TRUE)
+
+a2 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/walker_lake_v.txt", header=TRUE)
+
+a3 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/walker_lake_u.txt", header=TRUE)
+
+a4 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/soil.txt", header=TRUE)
+
+a5 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/o3.txt", header=TRUE)
+
+a6 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/soil_complete.txt", header=TRUE)
+
+a7 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/coal_ash.txt", header=TRUE)
+
+a8 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/broom_barn_data.txt", header=TRUE)
+
+a9 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/nc_sids.txt", header=TRUE)
+
+a10 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/unemp_data.txt", header=TRUE)
+
+a11 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/nc_sids_data.txt", header=TRUE)
+
+a12 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/nc_seats.txt", header=TRUE)
+
+a13 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/parana.txt", header=TRUE)
+
+a14 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/jura.txt", header=TRUE)
+
+a15 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/o3.txt", header=TRUE)
+
+a16 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/coal_ash.txt", header=TRUE)
+
+a17 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/elevation.txt", header=TRUE)
+
+a18 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/kruger_park_rainfall.txt", header=TRUE)
+
+a19 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/ca_elections_results_2012.txt", header=TRUE)
+
+a20 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/la_data.txt", header=TRUE)
+
+str(a20)
+
+# --- Palisafes Fire Dataset from ARCGIS --- #
+# pali <- read.csv("/Users/darensivam/Desktop/UCLA/Year 4/Winter/C173/Final Project/palisades.csv", header = FALSE, sep = "\t")
+# str(pali)
+```
+
+
+# Clean data
+
+```{r}
+a6 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/soil_complete.txt", header=TRUE)
+str(a6)
+
+# Repeated locations. Use one or average values
+nrow(a6) == nrow(unique(a6[, c("x", "y")]))
+
+# Aggregate data i.e. per year or per month(if time is involved)
+```
+
+\pagebreak
+
+# Non-Spatial Data Analysis
+
+**Variable Descriptions:**\
+
+- 1. *x*
+
+  - Description: The x-coordiante of the sampling location.
+  - Type: Integer
+
+- 2. *y*
+
+  - Description: The y-coordinate of the sampling location.
+  - Type: Integer
+
+- 3. *cadmium*
+
+  - Description: Cadmium concentration in the soil sample. It is the target variable due to its carcinogenic effects and persistence in ecosystems. 
+  - Relevance: Heavy metal pollutant which can be toxic and regulated in soil due to health risks.
+  - Type: Numeric(floating point)
+  - Typical Units: (Assumed) milligrams per kilogram (mg/kg)
+
+- 4. *copper*
+
+  - Description: Copper concentration in the soil sample
+  - Relevance: a trace metal which can be toxic to plants and animals in excess.
+  - Type: Integer
+  - Typical Units: (Assumed) milligrams per kilogram (mg/kg)
+
+- 5. *lead* 
+
+  - Description: Lead concentration in the soil sample
+  - Relevance: A toxic metal which can poise a health concern for humans after prolonged and increased exposure.
+  - Type: Integer
+  - Typical Units: (Assumed) milligrams per kilogram (mg/kg)
+
+- 6. *zinc* 
+
+  - Description: Zinc concentration in the soil sample
+  - Relevance: A trace element in soil that is essential for plant growth but can be harmful in excess amounts.
+  - Type: Integer
+  - Typical Units: (Assumed) milligrams per kilogram (mg/kg)
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(e1071)
+# Histograms
+par(mfrow = c(1, 2))
+# Cd
+ggplot(a6, aes(x = cadmium)) +
+  geom_histogram(bins = 20, fill = "lightblue", color = "black") +
+  labs(title = "Cadmium", x = "mg/kg")
+# Cu
+ggplot(a6, aes(x = copper)) +
+  geom_histogram(bins = 20, fill = "goldenrod", color = "black") +
+  labs(title = "Copper", x = "mg/kg")
+# Pb
+ggplot(a6, aes(x = lead)) +
+  geom_histogram(bins = 20, fill = "lightgreen", color = "black") +
+  labs(title = "Lead", x = "mg/kg")
+# Zn
+ggplot(a6, aes(x = zinc)) +
+  geom_histogram(bins = 20, fill = "salmon", color = "black") +
+  labs(title = "Zinc", x = "mg/kg")
+
+
+# ECDFs
+# Cd
+plot(ecdf(a6$cadmium),
+     main = "ECDF of Cadmium",
+     xlab = "Cd (mg/kg)",
+     ylab = "F(x)")
+# Cu
+plot(ecdf(a6$copper),
+     main = "ECDF of Copper",
+     xlab = "Cu (mg/kg)",
+     ylab = "F(x)")
+# Pb
+plot(ecdf(a6$lead),
+     main = "ECDF of Lead",
+     xlab = "Pb (mg/kg)",
+     ylab = "F(x)")
+# Zn
+plot(ecdf(a6$zinc),
+     main = "ECDF of Zinc",
+     xlab = "Zn (mg/kg)",
+     ylab = "F(x)")
+
+# Scatterplots
+a6_long <- a6 %>%
+  pivot_longer(
+    cols = c("copper", "lead", "zinc"),
+    names_to = "metal",
+    values_to = "concentration"
+  )
+ggplot(a6_long, aes(x = concentration, y = cadmium)) +
+  geom_point() +
+  facet_wrap(~ metal, scales = "free_x") +
+  labs(title = "Cadmium vs Other Metals",
+       x = "Concentration (mg/kg)",
+       y = "Cadmiuim (mg/kg)") +
+  theme_minimal()
+
+
+# Descriptive statistics
+summary(a6)
+sapply(a6[c("cadmium", "copper", "lead", "zinc")], sd)
+sapply(a6[c("cadmium", "copper", "lead", "zinc")], function(x) c(skewness = skewness(x), kurtosis = kurtosis(x)))
+
+# Etc.
+par(mfrow = c(1, 1))
+# Boxplot
+boxplot(a6$cadmium, a6$copper, a6$lead, a6$zinc,
+        names = c("Cadmium", "Copper", "Lead", "Zinc"),
+        main = "Boxplots of Metal Concentrations",
+        col = c("black", "darkred", "turquoise", "darkgreen"))
+# Correlation matrix
+cor_matrix <- cor(a6[c("cadmium", "copper", "lead", "zinc")])
+round(cor_matrix, 2)
+```
+
+
+
+\pagebreak
+# Construct Bubble Plots and H-scatterplots
+
+```{r}
+library(sp)
+library(gstat)
+# Bubble plot
+a6_2 <- read.table("http://www.stat.ucla.edu/~nchristo/statistics_c173_c273/soil_complete.txt", header=TRUE)
+coordinates(a6_2) <- ~ x + y
+bubble(a6_2, "cadmium",
+       key.entries = quantile(a6$cadmium, probs = seq(0, 1, 0.2)),
+       xlab = "X Coordinate", ylab = "Y Coordinate",
+       main = "Bubble Plot of Cadmium Concentration",
+       maxsize = 2,
+       scales = list(draw = TRUE))
+
+
+# H-scatterplot
+max_dist <- max(spDists(a6_2))
+h_breaks <- seq(0, max_dist / 2, length.out = 10)
+hscat(cadmium ~ 1, data = a6_2, breaks = h_breaks)
+```
+
+\pagebreak
+# Variograms
+
+```{r}
+library(geoR)
+
+# --- Compute empirical semivariogram --- #
+soil_geodata <- as.geodata(a6, coords.col = 1:2, data.col = 3)
+soil_max_dist <- max(dist(soil_geodata$coords))
+# Classical
+soil_classical <- variog(soil_geodata, max.dist = soil_max_dist / 2, estimator.type = "classical")
+# Robust
+soil_robust <- variog(soil_geodata, max.dist = soil_max_dist / 2, estimator.type = "modulus")
+# Plot
+plot(soil_classical, pch = 19, 
+     main = "Semivariogram (Cadmium)",
+     xlab = "Distance",
+     ylab = "Semivariance")
+points(soil_robust$u, soil_robust$v, pch = 19, col = "red")
+legend("bottomright",
+       legend = c("Classical", "Robust"),
+       pch = 19,
+       col = c("black", "red"))
+
+# --- Fit Theoretical Models --- #
+# OLS, WLS, MLE, By-eye, etc
+### --- Classical --- ###
+plot(soil_classical, main = "Classical Semivariogram for Soil Data with Various Fits")
+# By-eye spherical
+lines.variomodel(cov.model = "sph", cov.pars = c(12, 1000), nug = 2, max.dist = 2500, col = "red", lty = 2)
+# Spherical using default weights
+soil_fit_default <- variofit(soil_classical, cov.model = "sph", ini.cov.pars = c(12, 1000), nugget = 2)
+soil_fit_default
+lines(soil_fit_default, col = "blue", lty = 1)
+# Cressie's Weights
+soil_fit_cressie <- variofit(soil_classical, cov.model = "sph", ini.cov.pars = c(12, 1000), nug = 2, weights = "cressie")
+soil_fit_cressie
+lines(soil_fit_cressie, col = "lightgreen", lty = 2)
+# Equal weights
+soil_fit_equal <- variofit(soil_classical, cov.model = "sph", ini.cov.pars = c(12, 1000), nug = 2, weights = "equal")
+soil_fit_equal
+lines(soil_fit_equal, col = "orange", lty = 2)
+# MML
+soil_fit_mml <- likfit(soil_geodata, cov.model = "sph", ini.cov.pars = c(12, 1000), nug = 2, lik.method = "ML")
+soil_fit_mml
+lines(soil_fit_mml, col = "purple", lty = 2)
+# Exp
+soil_fit_exp <- variofit(soil_classical, cov.model = "exp", ini.cov.pars = c(12, 1000), nug = 2)
+soil_fit_exp
+lines(soil_fit_exp, col = "pink", lty = 3)
+# Gaussian
+soil_fit_gaus <- variofit(soil_classical, cov.model = "gau", ini.cov.pars = c(12, 1000), nug = 2)
+soil_fit_gaus
+lines(soil_fit_gaus, col = "cyan", lty = 2)
+
+legend("bottomright", legend = c("By-Eye",
+                                 "Default Weights",
+                                 "Cressie's Weights",
+                                 "Equal Weights",
+                                 "MML",
+                                 "Exponential",
+                                 "Gaussian"),
+       col = c("red", "blue", "lightgreen", "orange", "purple", "pink", "cyan"),
+       lty = c(2, 1, 2, 2, 2, 3, 2),
+       bty = "n",
+       cex = 0.8)
+
+
+### --- Robust --- ###
+plot(soil_robust, main = "Robust Semivariogram for Soil Data with Various Fits")
+# By-eye spherical
+lines.variomodel(cov.model = "sph", cov.pars = c(8.5, 1000), nug = 0, max.dist = 2500, col = "red", lty = 2)
+# Spherical using default weights
+soil_fit_default <- variofit(soil_robust, cov.model = "sph", ini.cov.pars = c(8.5, 1000), nugget = 0)
+soil_fit_default
+lines(soil_fit_default, col = "blue", lty = 1)
+# Cressie's Weights
+soil_fit_cressie <- variofit(soil_robust, cov.model = "sph", ini.cov.pars = c(8.5, 1000), nug = 0, weights = "cressie")
+soil_fit_cressie
+lines(soil_fit_cressie, col = "lightgreen", lty = 2)
+# Equal weights
+soil_fit_equal <- variofit(soil_robust, cov.model = "sph", ini.cov.pars = c(8.5, 1000), nug = 0, weights = "equal")
+soil_fit_equal
+lines(soil_fit_equal, col = "orange", lty = 2)
+# MML
+soil_fit_mml <- likfit(soil_geodata, cov.model = "sph", ini.cov.pars = c(8.5, 1000), nug = 0, lik.method = "ML")
+soil_fit_mml
+lines(soil_fit_mml, col = "purple", lty = 2)
+# Exp
+soil_fit_exp <- variofit(soil_robust, cov.model = "exp", ini.cov.pars = c(8.5, 1000), nug = 0)
+soil_fit_exp
+lines(soil_fit_exp, col = "pink", lty = 3)
+# Gaussian
+soil_fit_gaus <- variofit(soil_robust, cov.model = "gau", ini.cov.pars = c(8.5, 1000), nug = 0)
+soil_fit_gaus
+lines(soil_fit_gaus, col = "cyan", lty = 2)
+
+legend("bottomright", legend = c("By-Eye",
+                                 "Default Weights",
+                                 "Cressie's Weights",
+                                 "Equal Weights",
+                                 "MML",
+                                 "Exponential",
+                                 "Gaussian"),
+       col = c("red", "blue", "lightgreen", "orange", "purple", "pink", "cyan"),
+       lty = c(2, 1, 2, 2, 2, 3, 2),
+       bty = "n",
+       cex = 0.8)
+
+# Directional Semivariogram
+dir_vario <- variog4(soil_geodata, max.dist = 2000, 
+                     direction = c(0, 45, 90, 135), tolerance = 22.5, unit.angle = "degrees")
+plot(dir_vario, col = c("red", "blue", "green", "purple"), pch = 19,
+     main = "Directional Semivariograms for Cadmium",
+     xlab = "Distance", ylab = "Semivariance")
+title(main = "Directional Semivariograms for Cadmium")
+```
+
+
+\pagebreak
+# Predictions on a dense grid using the iverse distance interpolation method.
+
+```{r}
+# str(a6_2)
+# Interpolation method predictions
+x.range <- range(a6_2$x)
+y.range <- range(a6_2$y)
+dense_grid <- expand.grid(x = seq(from = x.range[1], to = x.range[2], by = 50), y = seq(from = y.range[1], to = y.range[2], by = 50))
+coordinates(dense_grid) <- ~ x + y
+
+# Predict data points - idw = inverse distance weighted predictor
+idw_pred <- idw(cadmium ~ 1, locations = a6_2, newdata = dense_grid)
+
+# Plot
+plot(dense_grid, pch = ".", col = "gray", main = "IDW Predictions on Dense Grid")
+points(idw_pred, pch = 19, cex = 0.5, col = heat.colors(100)[cut(idw_pred$var1.pred, breaks = 100)])
+points(a6_2, pch = 1, col = "black", cex = 0.8)
+legend("topright", legend = c("Observed Data", round(quantile(idw_pred$var1.pred, probs = seq(0, 1, 0.2)), 5), 1), fill = c(NA, heat.colors(5)), border = c(NA, rep("black", 5)), title = "Cadmium (mg/kg)", bty = "n", cex = 0.9)
+# image() method for raster map
+idw_df <- as.data.frame(idw_pred)
+idw_mat <- matrix(idw_df$var1.pred, nrow = length(seq(from = x.range[1], to = x.range[2], by = 50)), ncol = length(seq(from = y.range[1], to = y.range[2], by = 50)))
+image(x = seq(from = x.range[1], to = x.range[2], by = 50), y = seq(from = y.range[1], to = y.range[2], by = 50), idw_mat,
+      col = terrain.colors(20),
+      xlab = "X", ylab = "Y",
+      main = "IDW Interpolation Predictions (Cadmium)")
+contour(x = seq(from = x.range[1], to = x.range[2], by = 50), y = seq(from = y.range[1], to = y.range[2], by = 50), idw_mat, add = TRUE, nlevels = 10)
+points(a6$x, a6$y, pch = 19, cex = 0.5)
+```
+
+\pagebreak
+# Predictions using Different Types of Kriging
+
+```{r}
+# Lab 20 - kriging in R & HW9, HW7, Lab6, Lab7
+
+# Prepare data
+coordinates(a6) <- ~ x + y
+gridded(dense_grid) <- TRUE
+# Fit variogram - use equal weights on robust variogram
+plot(soil_robust, main = "Robust Semivariogram for Soil Data with Equal Weights Fits")
+soil_fit_equal <- variofit(soil_robust, cov.model = "sph", ini.cov.pars = c(8.5, 1000), nug = 0, weights = "equal")
+lines(soil_fit_equal, col = "orange", lty = 1)
+
+vgm_model_equal <- vgm(nugget = 1.5, model = "Sph", range = 1130, psill = 7.55)
+
+
+# Ordinary Kriging
+ok_pred <- krige(formula = cadmium ~ 1, locations = a6, newdata = dense_grid)
+summary(ok_pred)
+gridded(ok_pred) <- TRUE
+
+cv_ok <- krige.cv(cadmium ~ 1, a6, model = vgm_model_equal)
+PRESS_ok <- sum(cv_ok$residual^2, na.rm = TRUE)
+cat("PRESS for Ordinary Kriging:", PRESS_ok, "\n")
+
+# Log Ordinary Kriging
+a6$log_cadmium <- log(a6$cadmium)
+vgm_log <- variogram(log_cadmium ~ 1, data = a6)
+plot(vgm_log, main = "Empirical Variogram for log(Cadmium)")
+v_model_log <- fit.variogram(vgm_log, model = vgm(psill = 0.5, model = "Sph", range = 1000, nugget = 0.1))
+plot(vgm_log, v_model_log, main = "Fitted Variogram for log(Cadmium)")
+log_ok_pred <- krige(formula = log_cadmium ~ 1, locations = a6, newdata = dense_grid, model = v_model_log)
+summary(log_ok_pred)
+gridded(log_ok_pred) <- TRUE
+
+cv_log_ok <- krige.cv(formula = log_cadmium ~ 1, locations = a6, model = v_model_log)
+PRESS_log_ok <- sum(cv_log_ok$residual^2, na.rm = TRUE)
+cat("PRESS for Log Ordinary Kriging:", PRESS_log_ok, "\n")
+
+# Simple Kriging
+mean_cadmium <- mean(a6$cadmium)
+sk_pred <- krige(formula = cadmium ~ 1, locations = a6, newdata = dense_grid, model = vgm_model_equal, beta = mean_cadmium)
+summary(sk_pred)
+gridded(sk_pred) <- TRUE
+
+cv_sk <- krige.cv(cadmium ~ 1, a6, model = vgm_model_equal, beta = mean_cadmium)
+PRESS_sk <- sum(cv_sk$residual^2, na.rm = TRUE)
+cat("PRESS for Simple Kriging:", PRESS_sk, "\n")
+
+# Log Simple Kriging
+mean_log_cadmium <- mean(a6$log_cadmium)
+log_sk_pred <- krige(formula = log_cadmium ~ 1, locations = a6, newdata = dense_grid, model = v_model_log, beta = mean_log_cadmium)
+summary(log_sk_pred)
+gridded(log_sk_pred) <- TRUE
+
+cv_log_sk <- krige.cv(formula = log_cadmium ~ 1, locations = a6, model = v_model_log, beta = mean_log_cadmium)
+PRESS_log_sk <- sum(cv_log_sk$residual^2, na.rm = TRUE)
+cat("PRESS for Log Simple Kriging (log-scale):", PRESS_log_sk, "\n")
+
+# Universal Kriging
+uk_pred <- krige(formula = cadmium ~ x + y, locations = a6, newdata = dense_grid)
+summary(uk_pred)
+gridded(uk_pred) <- TRUE
+
+uk_cv <- krige.cv(formula = cadmium ~ x + y, locations = a6, model = vgm_model_equal)
+PRESS_uk <- sum(uk_cv$residual^2, na.rm = TRUE)
+cat("PRESS for Universal Kriging: ", PRESS_uk, "\n")
+
+# Cokriging -- HW9
+a6_df <- as.data.frame(a6)
+a6_df$log_cadmium <- log(a6_df$cadmium)
+a6_df$log_copper   <- log(a6_df$copper)
+a6_df$log_lead     <- log(a6_df$lead)
+a6_df$log_zinc     <- log(a6_df$zinc)
+# gstat objects
+g <- gstat(id = "log_cadmium", formula = log_cadmium ~ 1, locations = ~ x + y, data = a6_df)
+g <- gstat(g, id = "log_copper",   formula = log_copper ~ 1, locations = ~ x + y, data = a6_df)
+g <- gstat(g, id = "log_lead",     formula = log_lead ~ 1, locations = ~ x + y, data = a6_df)
+g <- gstat(g, id = "log_zinc",     formula = log_zinc ~ 1, locations = ~ x + y, data = a6_df)
+# variogram
+vario_mult <- variogram(g)
+plot(vario_mult, main = "Cokriging Sample Variograms")
+# Fit model
+init_model <- vgm(psill = 0.5, model = "Sph", range = 1000, nugget = 0.1)
+soil_fit <- fit.lmc(vario_mult, g, model = init_model)
+plot(vario_mult, soil_fit, main = "Fitted LMC for Cokriging")
+# Predictions
+ck_pred <- predict(soil_fit, newdata = dense_grid)
+summary(soil_fit)
+
+invisible(capture.output({cv_ck <- gstat.cv(soil_fit, verbose = FALSE)}))
+PRESS_ck <- sum(cv_ck$residual^2, na.rm = TRUE)
+cat("PRESS for Cokriging: ", PRESS_ck, "\n")
+
+# PRESS value table
+press_table <- data.frame(
+  Method = c("OK", "Log-OK", "SK", "Log-SK", "UK", "Cokriging"),
+  PRESS = c(PRESS_ok, PRESS_log_ok, PRESS_sk, PRESS_log_sk, PRESS_uk, PRESS_ck)
+)
+press_table
+```
+
+
+\pagebreak
+# Construct a Raster Map and Add Contours
+
+```{r}
+# Raster Map w/ contours
+x_seq <- unique(dense_grid$x)
+y_seq <- unique(dense_grid$y)
+
+# OK
+ok_mat <- matrix(ok_pred$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x_seq, y_seq, ok_mat,
+      col = terrain.colors(20),
+      xlab = "X", ylab = "Y",
+      main = "Ordinary Kriging Predictions(Cadmium)")
+contour(x_seq, y_seq, ok_mat, add = TRUE, nlevels = 10)
+points(a6$x, a6$y, pch = 19, cex = 0.5)
+
+# Log OK
+log_ok_df <- as.data.frame(log_ok_pred)
+log_ok_mat <- matrix(log_ok_df$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x_seq, y_seq, log_ok_mat,
+      col = terrain.colors(20),
+      xlab = "X", ylab = "Y",
+      main = "Log Ordinary Kriging Predictions(log(Cadmium))")
+contour(x_seq, y_seq, log_ok_mat, add = TRUE, nlevels = 10)
+points(a6$x, a6$y, pch = 19, cex = 0.5)
+
+# SK
+sk_df <- as.data.frame(sk_pred)
+sk_mat <- matrix(sk_df$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x_seq, y_seq, sk_mat,
+      col = terrain.colors(20),
+      xlab = "X", ylab = "Y",
+      main = "Simple Kriging Predictions (Cadmium)")
+contour(x_seq, y_seq, sk_mat, add = TRUE, nlevels = 10)
+points(a6$x, a6$y, pch = 19, cex = 0.5)
+
+# Log SK
+log_sk_df <- as.data.frame(log_sk_pred)
+log_sk_mat <- matrix(log_sk_df$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x_seq, y_seq, log_sk_mat,
+      col = terrain.colors(20),
+      xlab = "X", ylab = "Y",
+      main = "Log Simple Kriging Predictions(log(Cadmium))")
+contour(x_seq, y_seq, log_sk_mat, add = TRUE, nlevels = 10)
+points(a6$x, a6$y, pch = 19, cex = 0.5)
+
+# UK
+uk_df <- as.data.frame(uk_pred)
+uk_mat <- matrix(uk_df$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x_seq, y_seq, uk_mat,
+      col = terrain.colors(20),
+      xlab = "X", ylab = "Y",
+      main = "Universal Kriging Predictions (Cadmium)")
+contour(x_seq, y_seq, uk_mat, add = TRUE, nlevels = 10)
+points(a6$x, a6$y, pch = 19, cex = 0.5)
+
+# Cokriging
+ck_df <- as.data.frame(ck_pred)
+# head(ck_df)
+ck_mat <- matrix(ck_df$log_cadmium.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x_seq, y_seq, ck_mat,
+      col = terrain.colors(20),
+      xlab = "X", ylab = "Y",
+      main = "Cokriging Predictions (log(Cadmium))")
+contour(x_seq, y_seq, ck_mat, add = TRUE, nlevels = 10)
+points(a6$x, a6$y, pch = 19, cex = 0.5)
+```
+

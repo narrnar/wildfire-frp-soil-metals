@@ -1,0 +1,684 @@
+---
+title: "C173 Final Project (ArcGIS Data)"
+author: "Daren Sathasivam"
+date: '`r Sys.Date()`'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# NASA FIRMS Wildfire data using MODIS Algorithm for Fire Detection
+
+```{r}
+#https://firms.modaps.eosdis.nasa.gov/download/list.php
+# 1-6-2025 to 1-24-2025
+data <- read.csv("FIRMS_MODIS.csv")
+dim(data)
+str(data)
+```
+
+# Clean Data 
+
+```{r}
+# Load libraries
+library(dplyr)
+library(geoR)
+library(sp)
+library(gstat)
+library(ggplot2)
+library(tidyr)
+library(e1071)
+
+# --- Clean data --- 
+ca_data <- data %>%
+  filter(latitude >= 32.5 & latitude <= 42,
+         longitude >= -124.4 & longitude <= -114.13)
+cal_data <- ca_data %>%
+  mutate(acq_date = as.Date(acq_date))
+# Select variables
+final_data <- ca_data %>%
+  select(longitude, latitude, frp, brightness, bright_t31, confidence, scan, daynight, acq_date)
+# Order data by date and remove duplicates
+final_data <- final_data %>%
+  arrange(acq_date) %>%
+  distinct(latitude, longitude, .keep_all = TRUE)
+final_data$daynight <- as.factor(final_data$daynight)
+final_data$acq_date <- as.Date(final_data$acq_date)
+
+dim(final_data)
+str(final_data)
+# range(final_data$acq_date)
+colSums(is.na(final_data))
+```
+
+
+
+\pagebreak
+# Dataset Description
+**Dataset Dimensions:**\
+
+- Rows: 755 Observations
+- Cols: 9 Columns
+
+**Coordinates:**\
+
+- 1. *longitude*
+
+  - Description: Longitude of the incident’s reported point of origin.
+  - Type: Numeric (decimal degrees).
+  - Relevance: Spatial reference(x) that helps identify fire locations in relation to California's geography
+
+- 2. *latitude*
+
+  - Description: Latitude of the incident’s reported point of origin.
+  - Type: Numeric (decimal degrees).
+  - Relevance: Spatial reference(y) that helps identify fire locations in relation to California's geography
+
+
+**Target Variable:**\
+  
+- 3. *frp*
+
+  - Description: Fire Radiative Power/Energy output from fires
+  - Type: Numeric.
+  - Relevance: Direct measure of fire intensity/energy.
+  
+**Predictor Variables:**\
+
+- 4. *brightness*
+
+  - Description:Brightness temperature - Thermal radiation at fire location.
+  - Type: Numeric (Kelvin).
+  - Relevance: Higher values indicate stronger thermal signals from fires.
+  
+- 5. **bright_t31**
+
+  - Description: Brightness temperature measured in MODIS band 31.
+  - Type: Numeric(Kelvin).
+  - Relevance: Another thermal measure capturing different infrared wavelengths of the fire.
+
+- 6. **confidence**
+
+  - Description: Detection confidence - Reliability of fire detection
+  - Type: Integer(0-100).
+  - Relevance: Higher confidence readings may correlate with more accurate FRP values.
+
+- 7. **scan**
+
+  - Description: Approximate pixel size on the ground in the cross-track direction.
+  - Type: Numeric(km).
+  - Relevance:  Larger scan areas may influence fire detection characteristics.
+
+- 8. **daynight*
+
+  - Description: Day/Night flag.
+  - Type: Categorical (2 levels - "D"/"N").
+  - Relevance: Fire detection and thermal readings can differ by day vs. night conditions.
+
+- 9. **acq_date**
+
+  - Description: Acquisition date.
+  - Type: Character (YYYY-MM-DD).
+  - Relevance: Organizational variable - Not for modeling, but useful for temporal sorting/analysis.
+  
+In this analysis, my target variable is IncidentSize. By doing this, the model can predict the size of a fire based on the predictors, DiscoveryAcres, IncidentTypeCategory, FireCause, POOProtectingAgency, GACC, and POOLandownerKind, which provide continuous and categorical information that may help explain variations in the final fire size. The coordinate values allow for spatial interpolation and geostatistical modeling.
+
+
+\pagebreak
+# Exploratory Data Analysis(EDA)
+
+```{r}
+library(maps)
+plot(x = final_data$longitude, y = final_data$latitude,
+     col = "orange",
+     xlim = c(-124.4, -114.13),
+     ylim = c(32.5, 42),
+     xlab = "Longitude", ylab = "Latitude", main = "Fire Observations in California")
+map("county", "California", add = TRUE)
+
+# Histograms, ecdfs, scatterplots, descriptive statistics, etc
+numeric_vars <- c("frp", "brightness", "bright_t31", "confidence", "scan")
+cat_var <- "daynight"
+
+# Summaries for numeric
+summary_stats <- final_data %>%
+  select(all_of(numeric_vars)) %>%
+  summary()
+summary_stats
+
+par(mfrow = c(2, 2))
+# Histograms for numeric
+for (var in numeric_vars) {
+  p <- ggplot(final_data, aes_string(x = var)) +
+    geom_histogram(fill = "deepskyblue", col = "black") +
+    ggtitle(paste("Histogram of", var)) +
+    xlab(var) +
+    ylab("Frequency")
+  print(p)
+}
+
+# Boxplots for numeric
+for (var in numeric_vars) {
+  p <- ggplot(final_data, aes_string(y = var)) +
+    geom_boxplot(col = "black", fill = "goldenrod") +
+    ggtitle(paste("Boxplot of", var)) +
+    ylab(var)
+  print(p)
+}
+
+# ECDFs
+for (var in numeric_vars) {
+  p <- ggplot(final_data, aes_string(x = var)) +
+    stat_ecdf(col = "red") +
+    ggtitle(paste("ECDF of", var)) +
+    xlab(var) +
+    ylab("F(x)")
+  print(p)
+}
+
+# Categoical barplot
+ggplot(final_data, aes_string(x = cat_var)) +
+  geom_bar(col = "black", fill = c("yellow", "darkblue")) +
+  ggtitle("Bar Plot of Day vs. Night Detections") +
+  xlab("Detection Period") +
+  ylab("Count")
+
+# frp vs. predictors
+# Scatter Plots for FRP vs. numeric predictors
+for (var in setdiff(numeric_vars, "frp")) {
+  p <- ggplot(final_data, aes_string(x = var, y = "frp")) +
+    geom_point(col = "cyan3") +
+    ggtitle(paste("Scatter Plot of frp vs.", var)) +
+    xlab(var) +
+    ylab("frp")
+  print(p)
+}
+# Boxplot of FRP by "daynight"
+ggplot(final_data, aes_string(x = cat_var, y = "frp")) +
+  geom_boxplot(fill = "salmon") +
+  ggtitle("Boxplot of FRP by Day/Night") +
+  xlab("Detection Period") +
+  ylab("FRP")
+```
+
+
+
+
+\pagebreak
+# Bubble Plots and H-scatterplot
+
+```{r}
+# Spatial data
+final_data_sp <- final_data
+coordinates(final_data_sp) <- ~ longitude + latitude
+
+# Bubble plot for frp
+bubble(final_data_sp, "frp",
+       key.entries = quantile(final_data$frp, probs = seq(0, 1, 0.2), na.rm = TRUE),
+       xlab = "Longitude", 
+       ylab = "Latitude",
+       main = "Bubble Plot of Fire Radiative Power (FRP)",
+       maxsize = 2,
+       scales = list(draw = TRUE))
+       
+# H-scatterplot for frp
+max_dist <- max(spDists(final_data_sp))
+h_breaks <- seq(0, max_dist / 2, length.out = 10)
+hscat(frp ~ 1, data = final_data_sp, breaks = h_breaks)
+```
+
+
+\pagebreak
+# Variograms
+
+```{r}
+fire_geodata <- as.geodata(final_data,
+                           coords.col = c("longitude", "latitude"),
+                           data.col = "frp")
+fire_max_dist <- max(dist(fire_geodata$coords))
+fire_max_dist
+
+# Classical Semivariogram
+fire_classical <- variog(fire_geodata,
+                         max.dist = fire_max_dist / 2,
+                         estimator.type = "classical")
+# Robust  Semivariogram
+fire_robust <- variog(fire_geodata,
+                      max.dist = fire_max_dist / 2,
+                      estimator.type = "modulus")
+plot(fire_classical, pch = 19,
+     main = "Semivariogram (FRP) - Classical vs. Robust",
+     xlab = "Distance", ylab = "Semivariance")
+points(fire_robust$u, fire_robust$v, pch = 19, col = "red")
+legend("bottomright",
+       legend = c("Classical", "Robust"),
+       pch = 19,
+       col = c("black", "red"))
+
+
+# --- Classical Fits ---
+# By-Eye sph
+plot(fire_classical, pch = 19,
+     main = "Classical Semivariogram (FRP) with Various Fits",
+     xlab = "Distance", ylab = "Semivariance")
+lines.variomodel(cov.model = "sph",
+                 cov.pars = c(150000, 3),
+                 nugget = 50000,
+                 max.dist = fire_max_dist / 2,
+                 col = "red", lty = 2)
+
+# Default weights sph
+fire_fit_default <- variofit(fire_classical,
+                             cov.model = "sph",
+                             ini.cov.pars = c(150000, 4),
+                             nugget = 50000)
+fire_fit_default
+lines(fire_fit_default, col = "blue", lty = 1)
+
+# Cressie's weights
+fire_fit_cressie <- variofit(fire_classical,
+                             cov.model = "sph",
+                             ini.cov.pars = c(150000, 3),
+                             nugget = 50000,
+                             weights = "cressie")
+fire_fit_cressie
+lines(fire_fit_cressie, col = "lightgreen", lty = 2)
+
+# Equal Weights
+fire_fit_equal <- variofit(fire_classical,
+                           cov.model = "sph",
+                           ini.cov.pars = c(150000, 3),
+                           nugget = 50000,
+                           weights = "equal")
+fire_fit_equal
+lines(fire_fit_equal, col = "orange", lty = 2)
+
+# MML
+fire_fit_mml <- likfit(fire_geodata,
+                       cov.model = "sph",
+                       ini.cov.pars = c(150000, 3),
+                       nugget = 50000,
+                       lik.method = "ML")
+fire_fit_mml
+lines(fire_fit_mml, col = "purple", lty = 2)
+
+# Exponential model
+fire_fit_exp <- variofit(fire_classical,
+                         cov.model = "exp",
+                         ini.cov.pars = c(150000, 3),
+                        nugget = 50000)
+lines(fire_fit_exp, col = "pink", lty = 3)
+
+# Gaussian model
+fire_fit_gaus <- variofit(fire_classical,
+                          cov.model = "gau",
+                          ini.cov.pars = c(150000, 3),
+                          nugget = 50000)
+lines(fire_fit_gaus, col = "cyan", lty = 2)
+
+legend("bottomright",
+       legend = c("By-Eye",
+                  "Default Weights",
+                  "Cressie's Weights",
+                  "Equal Weights",
+                  "MML",
+                  "Exponential",
+                  "Gaussian"),
+       col = c("red", "blue", "lightgreen", "orange", "purple", "pink", "cyan"),
+       lty = c(2, 1, 2, 2, 2, 3, 2),
+       bty = "n",
+       cex = 0.8)
+
+
+
+
+
+# --- Robust Fits --- 
+plot(fire_robust, pch = 19,
+     main = "Robust Semivariogram (FRP) with Various Fits",
+     xlab = "Distance", ylab = "Semivariance")
+
+# By-eye 
+lines.variomodel(cov.model = "sph",
+                 cov.pars = c(20000, 3),
+                 nug = 0,
+                 max.dist = fire_max_dist / 2,
+                 col = "red", lty = 2)
+
+# Default weights
+fire_fit_default_rb <- variofit(fire_robust,
+                             cov.model = "sph",
+                             ini.cov.pars = c(20000, 3),
+                             nugget = 0)
+fire_fit_default_rb
+lines(fire_fit_default_rb, col = "blue", lty = 1)
+
+# Cressie's weights
+fire_fit_cressie_rb <- variofit(fire_robust,
+                             cov.model = "sph",
+                             ini.cov.pars = c(20000, 3),
+                             nugget = 0,
+                             weights = "cressie")
+fire_fit_cressie_rb
+lines(fire_fit_cressie_rb, col = "lightgreen", lty = 2)
+
+# Equal Weights
+fire_fit_equal_rb <- variofit(fire_robust,
+                           cov.model = "sph",
+                           ini.cov.pars = c(20000, 3),
+                           nugget = 0,
+                           weights = "equal")
+fire_fit_equal_rb
+lines(fire_fit_equal_rb, col = "orange", lty = 2)
+
+# MML
+fire_fit_mml_rb <- likfit(fire_geodata,
+                       cov.model = "sph",
+                       ini.cov.pars = c(20000, 3),
+                       nugget = 0,
+                       lik.method = "ML")
+fire_fit_mml_rb
+lines(fire_fit_mml_rb, col = "purple", lty = 2)
+
+# Exponential model
+fire_fit_exp_rb <- variofit(fire_robust,
+                         cov.model = "exp",
+                         ini.cov.pars = c(20000, 3),
+                         nugget = 0)
+lines(fire_fit_exp_rb, col = "pink", lty = 3)
+
+# Gaussian model
+fire_fit_gaus_rb <- variofit(fire_robust,
+                          cov.model = "gau",
+                          ini.cov.pars = c(20000, 3),
+                          nugget = 0)
+lines(fire_fit_gaus_rb, col = "cyan", lty = 2)
+
+legend("bottomright",
+       legend = c("By-Eye",
+                  "Default Weights",
+                  "Cressie's Weights",
+                  "Equal Weights",
+                  "MML",
+                  "Exponential",
+                  "Gaussian"),
+       col = c("red", "blue", "lightgreen", "orange", "purple", "pink", "cyan"),
+       lty = c(2, 1, 2, 2, 2, 3, 2),
+       bty = "n",
+       cex = 0.8)
+
+
+
+# --- Directional semivariogram --- 
+dir_vario <- variog4(fire_geodata,
+                     max.dist = fire_max_dist / 2,
+                     direction = c(0, 45, 90, 135),  # cardinal directions
+                     tolerance = 22.5,
+                     unit.angle = "degrees")
+plot(dir_vario, 
+     col = c("red", "blue", "green", "purple"), 
+     pch = 19,
+     main = "Directional Semivariograms for FRP",
+     xlab = "Distance", 
+     ylab = "Semivariance")
+title(main = "Directional Semivariograms for FRP")
+```
+
+
+
+\pagebreak
+# IDW Interpolation Prediction
+
+```{r}
+# Interpolation method predictions
+x.range <- range(final_data_sp$longitude)
+y.range <- range(final_data_sp$latitude)
+
+dense_grid <- expand.grid(
+  longitude = seq(from = x.range[1], to = x.range[2], by = 0.05),
+  latitude = seq(from = y.range[1], to = y.range[2], by = 0.05)
+)
+coordinates(dense_grid) <- ~ longitude + latitude
+
+
+# Predict data points - idw = inverse distance weighted predictor
+idw_frp <- idw(frp ~ 1,
+               locations = final_data_sp,
+               newdata = dense_grid)
+
+# --- Plot --- 
+# Scatter plot with predictions
+plot(dense_grid, pch = ".", col = "gray", 
+     main = "IDW Predictions of FRP",
+     xlab = "Longitude", ylab = "Latitude")
+points(idw_frp, pch = 19, cex = 0.5, 
+       col = heat.colors(100)[cut(idw_frp$var1.pred, breaks = 100)])
+points(final_data_sp, pch = 1, col = "black", cex = 0.6)
+legend("topright", 
+       legend = c("Observed FRP", round(quantile(idw_frp$var1.pred, probs = seq(0, 1, 0.2)), 2)),
+       fill = c(NA, heat.colors(5)), 
+       border = c(NA, rep("black", 5)), 
+       title = "FRP (MW)", 
+       bty = "n", 
+       cex = 0.8)
+# Raster map with contours
+idw_df <- as.data.frame(idw_frp)
+idw_mat <- matrix(idw_df$var1.pred, 
+                  nrow = length(seq(from = x.range[1], to = x.range[2], by = 0.05)), 
+                  ncol = length(seq(from = y.range[1], to = y.range[2], by = 0.05)))
+
+image(x = seq(x.range[1], x.range[2], by = 0.05), 
+      y = seq(y.range[1], y.range[2], by = 0.05), 
+      z = idw_mat,
+      col = terrain.colors(20),
+      xlab = "Longitude", ylab = "Latitude",
+      main = "IDW Interpolation of FRP")
+contour(x = seq(x.range[1], x.range[2], by = 0.05), 
+        y = seq(y.range[1], y.range[2], by = 0.05), 
+        z = idw_mat, 
+        add = TRUE, 
+        nlevels = 10)
+points(final_data_sp, pch = 19, cex = 0.3, col = "black")
+map("county", "California", add = TRUE)
+```
+
+
+
+\pagebreak
+# Kriging
+
+```{r}
+# Lab 20 - kriging in R & HW9, HW7, Lab6, Lab7
+
+# Prepare data and vgm model for kriging - use classical vario with mml fit
+# coordinates(final_data_sp) <- ~ longitude + latitude
+gridded(dense_grid) <- TRUE
+vgm_frp <- vgm(
+  model = "Sph",
+  nugget = fire_fit_mml$nugget,         
+  psill = fire_fit_mml$cov.pars[1],      
+  range = fire_fit_mml$cov.pars[2]      
+)
+plot(fire_classical, main = "FRP Semivariogram with MML Fit")
+lines(fire_fit_mml, col = "red", lwd = 2)
+
+# Ordinary Kriging
+ok_frp <- krige(frp ~ 1, 
+                locations = final_data_sp, 
+                newdata = dense_grid, 
+                model = vgm_frp)
+summary(ok_frp)
+cv_ok <- krige.cv(frp ~ 1, final_data_sp, model = vgm_frp)
+PRESS_ok <- sum(cv_ok$residual^2, na.rm = TRUE)
+
+# Log-Ordinary Kriging
+final_data_sp$log_frp <- log(final_data_sp$frp + 0.001) # small constant bc 0s result in -inf
+vgm_log <- variogram(log_frp ~ 1, final_data_sp)
+v_model_log <- fit.variogram(vgm_log, model = vgm("Sph"))
+
+log_ok_frp <- krige(log_frp ~ 1, 
+                    locations = final_data_sp, 
+                    newdata = dense_grid, 
+                    model = v_model_log)
+summary(log_ok_frp)
+cv_log_ok <- krige.cv(log_frp ~ 1, final_data_sp, model = v_model_log)
+PRESS_log_ok <- sum(cv_log_ok$residual^2, na.rm = TRUE)
+
+
+# Simple Kriging
+mean_frp <- mean(final_data_sp$frp)
+sk_frp <- krige(frp ~ 1, 
+                locations = final_data_sp, 
+                newdata = dense_grid, 
+                model = vgm_frp, 
+                beta = mean_frp)
+summary(sk_frp)
+cv_sk <- krige.cv(frp ~ 1, final_data_sp, model = vgm_frp, beta = mean_frp)
+PRESS_sk <- sum(cv_sk$residual^2, na.rm = TRUE)
+
+# Log-Simple Kriging
+mean_log_frp <- mean(final_data_sp$log_frp)
+log_sk_frp <- krige(log_frp ~ 1, 
+                    locations = final_data_sp, 
+                    newdata = dense_grid, 
+                    model = v_model_log, 
+                    beta = mean_log_frp)
+summary(log_sk_frp)
+cv_log_sk <- krige.cv(log_frp ~ 1, final_data_sp, model = v_model_log, beta = mean_log_frp)
+PRESS_log_sk <- sum(cv_log_sk$residual^2, na.rm = TRUE)
+
+# Universal Kriging
+uk_frp <- krige(frp ~ longitude + latitude, 
+                locations = final_data_sp, 
+                newdata = dense_grid, 
+                model = vgm_frp)
+summary(uk_frp)
+uk_cv <- krige.cv(frp ~ longitude + latitude, final_data_sp, model = vgm_frp)
+PRESS_uk <- sum(uk_cv$residual^2, na.rm = TRUE)
+
+
+# Cokriging -- HW9
+final_df <- as.data.frame(final_data)
+final_df$log_frp <- log(final_df$frp + 0.001)
+final_df$log_brightness <- log(final_df$brightness + 0.001)
+final_df$log_bright_t31 <- log(final_df$bright_t31 + 0.001)
+final_df$log_confidence <- log(final_df$confidence + 0.001)
+final_df$log_scan <- log(final_df$scan + 0.001)
+final_df$daynight_num <- ifelse(final_df$daynight == "D", 0, 1)
+# coordinates(final_df) <- ~ longitude + latitude
+
+# gstat objects
+g <- gstat(id = "log_frp", formula = log_frp ~ 1, locations = ~ longitude + latitude, data = final_df)
+g <- gstat(g, id = "log_brightness", formula = log_brightness ~ 1, locations = ~ longitude + latitude, data = final_df)
+# g <- gstat(g, id = "log_bright_t31", formula = log_bright_t31 ~ 1, locations = ~ longitude + latitude, data = final_df)
+# g <- gstat(g, id = "log_confidence", formula = log_confidence ~ 1, locations = ~ longitude + latitude, data = final_df)
+# g <- gstat(g, id = "log_scan", formula = log_scan ~ 1, locations = ~ longitude + latitude, data = final_df)
+# g <- gstat(g, id = "daynight_num", formula = daynight_num ~ 1, locations = ~ longitude + latitude, data = final_df)
+# -- Had to remove predictors for cokriging to work. Kept frp(target) and brightness(predictor)
+
+# variogram
+vario_mult <- variogram(g)
+plot(vario_mult, main = "Cokriging Sample Variograms for FRP and Predictors")
+# Fit model
+init_model <- vgm(psill = 100, model = "Sph", range = 2, nugget = 50)
+frp_fit <- fit.lmc(vario_mult, g, model = init_model)
+plot(vario_mult, frp_fit, main = "Fitted LMC for FRP Cokriging")
+# Predictions
+ck_pred <- predict(frp_fit, newdata = dense_grid, set = list(nocheck = 1))
+summary(frp_fit)
+
+invisible(capture.output({cv_ck <- gstat.cv(frp_fit, verbose = FALSE)}))
+PRESS_ck <- sum(cv_ck$residual^2, na.rm = TRUE)
+
+
+#  PRESS Comparison Table
+press_table <- data.frame(
+  Method = c("OK", "Log-OK", "SK", "Log-SK", "UK", "Cokriging"),
+  PRESS = c(PRESS_ok, PRESS_log_ok, PRESS_sk, PRESS_log_sk, PRESS_uk, PRESS_ck)
+)
+press_table
+```
+
+
+
+\pagebreak
+# Raster Maps
+
+```{r}
+# Raster Map w/ contours
+x_seq <- unique(dense_grid$longitude)
+y_seq <- unique(dense_grid$latitude)
+
+# Ordinary Kriging
+ok_mat <- matrix(ok_frp$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x = x_seq, y = y_seq, z = ok_mat,
+      col = terrain.colors(20),
+      xlab = "Longitude", ylab = "Latitude",
+      main = "Ordinary Kriging Predictions (FRP)")
+contour(x = x_seq, y = y_seq, z = ok_mat, add = TRUE, nlevels = 10)
+points(final_data_sp$longitude, final_data_sp$latitude, pch = 19, cex = 0.5)
+map("county", "California", add = TRUE)
+
+# Log-Ordinary Kriging
+log_ok_df <- as.data.frame(log_ok_frp)
+log_ok_mat <- matrix(log_ok_df$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x = x_seq, y = y_seq, z = log_ok_mat,
+      col = terrain.colors(20),
+      xlab = "Longitude", ylab = "Latitude",
+      main = "Log Ordinary Kriging Predictions (log(FRP))")
+contour(x = x_seq, y = y_seq, z = log_ok_mat, add = TRUE, nlevels = 10)
+points(final_data_sp$longitude, final_data_sp$latitude, pch = 19, cex = 0.5)
+map("county", "California", add = TRUE)
+
+
+# Simple Kriging
+sk_df <- as.data.frame(sk_frp)
+sk_mat <- matrix(sk_df$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x = x_seq, y = y_seq, z = sk_mat,
+      col = terrain.colors(20),
+      xlab = "Longitude", ylab = "Latitude",
+      main = "Simple Kriging Predictions (FRP)")
+contour(x = x_seq, y = y_seq, z = sk_mat, add = TRUE, nlevels = 10)
+points(final_data_sp$longitude, final_data_sp$latitude, pch = 19, cex = 0.5)
+map("county", "California", add = TRUE)
+
+
+# Log-Simple Kriging
+log_sk_df <- as.data.frame(log_sk_frp)
+log_sk_mat <- matrix(log_sk_df$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x = x_seq, y = y_seq, z = log_sk_mat,
+      col = terrain.colors(20),
+      xlab = "Longitude", ylab = "Latitude",
+      main = "Log Simple Kriging Predictions (log(FRP))")
+contour(x = x_seq, y = y_seq, z = log_sk_mat, add = TRUE, nlevels = 10)
+points(final_data_sp$longitude, final_data_sp$latitude, pch = 19, cex = 0.5)
+map("county", "California", add = TRUE)
+
+
+# Universal Kriging
+uk_df <- as.data.frame(uk_frp)
+uk_mat <- matrix(uk_df$var1.pred, nrow = length(x_seq), ncol = length(y_seq))
+image(x = x_seq, y = y_seq, z = uk_mat,
+      col = terrain.colors(20),
+      xlab = "Longitude", ylab = "Latitude",
+      main = "Universal Kriging Predictions (FRP)")
+contour(x = x_seq, y = y_seq, z = uk_mat, add = TRUE, nlevels = 10)
+points(final_data_sp$longitude, final_data_sp$latitude, pch = 19, cex = 0.5)
+map("county", "California", add = TRUE)
+
+# Cokriging
+ck_df <- as.data.frame(ck_pred)
+ck_mat <- matrix(ck_df$log_frp.pred,
+                 nrow = length(x_seq), 
+                 ncol = length(y_seq))
+image(x = x_seq, y = y_seq, z = ck_mat,
+      col = terrain.colors(20),
+      xlab = "Longitude", ylab = "Latitude",
+      main = "Cokriging Predictions (FRP)")
+contour(x = x_seq, y = y_seq, z = ck_mat, add = TRUE, nlevels = 10)
+points(final_data_sp$longitude, final_data_sp$latitude, pch = 19, cex = 0.5)
+map("county", "California", add = TRUE)
+```
+
